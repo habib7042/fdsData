@@ -18,10 +18,7 @@ export async function GET(request: NextRequest) {
 
     const { data: user, error } = await supabaseServer
       .from('users')
-      .select(`
-        *,
-        member:members(*)
-      `)
+      .select('*')
       .eq('id', userId)
       .single()
 
@@ -32,11 +29,39 @@ export async function GET(request: NextRequest) {
       )
     }
 
+    // Get member data
+    const { data: member, error: memberError } = await supabaseServer
+      .from('members')
+      .select('*')
+      .eq('user_id', userId)
+      .single()
+
+    if (memberError) {
+      console.error('Member fetch error:', memberError)
+      return NextResponse.json(
+        { error: 'Failed to fetch member data' },
+        { status: 500 }
+      )
+    }
+
+    // Format member data
+    const formattedMember = {
+      id: member.id,
+      name: member.name,
+      email: member.email,
+      phone: member.phone,
+      monthlyAmount: Number(member.monthly_amount) || 0,
+      totalPaid: Number(member.total_paid) || 0,
+      totalDue: Number(member.total_due) || 0,
+      isActive: Boolean(member.is_active),
+      joinDate: member.join_date
+    }
+
     return NextResponse.json({
-      member: user.member
+      member: formattedMember
     })
   } catch (error) {
-    console.error('Profile fetch error:', error)
+    console.error('Member profile fetch error:', error)
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

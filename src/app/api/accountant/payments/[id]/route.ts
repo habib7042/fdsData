@@ -33,15 +33,13 @@ export async function PATCH(
     }
 
     const { action } = await request.json()
+    const paymentId = params.id
 
-    // Get the payment with member details
+    // Get payment details first
     const { data: payment, error: paymentError } = await supabaseServer
       .from('payments')
-      .select(`
-        *,
-        member:members(*)
-      `)
-      .eq('id', params.id)
+      .select('*')
+      .eq('id', paymentId)
       .single()
 
     if (paymentError || !payment) {
@@ -51,15 +49,24 @@ export async function PATCH(
       )
     }
 
+    if (payment.status !== 'PENDING') {
+      return NextResponse.json(
+        { error: 'Payment has already been processed' },
+        { status: 400 }
+      )
+    }
+
     // Update payment status
+    const updateData: any = {
+      status: action === 'APPROVE' ? 'APPROVED' : 'REJECTED',
+      verified_by: userId,
+      verified_at: new Date().toISOString()
+    }
+
     const { data: updatedPayment, error: updateError } = await supabaseServer
       .from('payments')
-      .update({
-        status: action === 'APPROVE' ? 'APPROVED' : 'REJECTED',
-        verified_at: new Date().toISOString(),
-        verified_by: userId
-      })
-      .eq('id', params.id)
+      .update(updateData)
+      .eq('id', paymentId)
       .select()
       .single()
 
@@ -73,29 +80,46 @@ export async function PATCH(
 
     // If approved, update member's total paid and due
     if (action === 'APPROVE') {
-      const { error: memberUpdateError } = await supabaseServer
+      const { data: member, error: memberError } = await supabaseServer
         .from('members')
-        .update({
-          total_paid: payment.member.total_paid + payment.amount,
-          total_due: payment.member.total_due - payment.amount
-        })
-        .eq('id', payment.member.id)
+        .select('*')
+        .eq('id', payment.member_id)
+        .single()
 
-      if (memberUpdateError) {
-        console.error('Member update error:', memberUpdateError)
+      if (memberError) {
+        console.error('Member fetch error:', memberError)
         return NextResponse.json(
-          { error: 'Failed to update member totals' },
+          { error: 'Failed to fetch member data' },
           { status: 500 }
         )
       }
+
+      const newTotalPaid = Number(member.total_paid) + Number(payment.amount)
+      const newTotalDue = Math.max(0, Number(member.total_due) - Number(payment.amount))
+
+      await supabaseServer
+        .from('members')
+        .update({
+          total_paid: newTotalPaid,
+          total_due: newTotalDue
+        })
+        .eq('id', member.id)
     }
 
     return NextResponse.json({
       message: `Payment ${action.toLowerCase()}d successfully`,
-      payment: updatedPayment
+      payment: {
+        ...updatedPayment,
+        amount: Number(updatedPayment.amount) || 0,
+        paymentMethod: updatedPayment.payment_method,
+        transactionId: updatedPayment.transaction_id,
+        status: updatedPayment.status,
+        submittedAt: updatedPayment.submitted_at,
+        verifiedAt: updatedPayment.verified_at
+      }
     })
   } catch (error) {
-    console.error('Payment update error:', error)
+    console.error('Payment action error:', error)
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

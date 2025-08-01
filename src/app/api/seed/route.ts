@@ -40,15 +40,15 @@ export async function GET(request: NextRequest) {
     }
     
     // Generate UUIDs for the records
-    const accountantUserId = uuidv4()
-    const member1UserId = uuidv4()
-    const member2UserId = uuidv4()
-    const member3UserId = uuidv4()
+    const accountantUserId = 'acc-001'
+    const member1UserId = 'mem-001'
+    const member2UserId = 'mem-002'
+    const member3UserId = 'mem-003'
     
-    const accountantMemberId = uuidv4()
-    const member1Id = uuidv4()
-    const member2Id = uuidv4()
-    const member3Id = uuidv4()
+    const accountantMemberId = 'acc-mem-001'
+    const member1Id = 'mem-001'
+    const member2Id = 'mem-002'
+    const member3Id = 'mem-003'
     
     // Hash passwords
     const accountantPassword = await bcrypt.hash('accountant123', 10)
@@ -63,28 +63,28 @@ export async function GET(request: NextRequest) {
         {
           id: accountantUserId,
           email: 'accountant@fds.com',
-          name: 'Accountant User',
+          name: 'System Accountant',
           role: 'ACCOUNTANT',
           password: accountantPassword
         },
         {
           id: member1UserId,
-          email: 'member1@fds.com',
-          name: 'Member 1',
+          email: 'john@fds.com',
+          name: 'John Doe',
           role: 'MEMBER',
           password: member1Password
         },
         {
           id: member2UserId,
-          email: 'member2@fds.com',
-          name: 'Member 2',
+          email: 'jane@fds.com',
+          name: 'Jane Smith',
           role: 'MEMBER',
           password: member2Password
         },
         {
           id: member3UserId,
-          email: 'member3@fds.com',
-          name: 'Member 3',
+          email: 'bob@fds.com',
+          name: 'Bob Johnson',
           role: 'MEMBER',
           password: member3Password
         }
@@ -105,7 +105,7 @@ export async function GET(request: NextRequest) {
       .insert([
         {
           id: accountantMemberId,
-          name: 'Accountant',
+          name: 'System Accountant',
           email: 'accountant@fds.com',
           monthly_amount: 0,
           total_paid: 0,
@@ -114,8 +114,10 @@ export async function GET(request: NextRequest) {
         },
         {
           id: member1Id,
-          name: 'Member One',
-          email: 'member1@fds.com',
+          name: 'John Doe',
+          email: 'john@fds.com',
+          phone: '+8801712345678',
+          address: 'Dhaka, Bangladesh',
           monthly_amount: 1000,
           total_paid: 500,
           total_due: 500,
@@ -123,8 +125,10 @@ export async function GET(request: NextRequest) {
         },
         {
           id: member2Id,
-          name: 'Member Two',
-          email: 'member2@fds.com',
+          name: 'Jane Smith',
+          email: 'jane@fds.com',
+          phone: '+8801812345678',
+          address: 'Chittagong, Bangladesh',
           monthly_amount: 1500,
           total_paid: 1500,
           total_due: 0,
@@ -132,8 +136,10 @@ export async function GET(request: NextRequest) {
         },
         {
           id: member3Id,
-          name: 'Member Three',
-          email: 'member3@fds.com',
+          name: 'Bob Johnson',
+          email: 'bob@fds.com',
+          phone: '+8801912345678',
+          address: 'Rajshahi, Bangladesh',
           monthly_amount: 2000,
           total_paid: 1000,
           total_due: 1000,
@@ -155,10 +161,10 @@ export async function GET(request: NextRequest) {
       .from('payments')
       .insert([
         {
-          id: uuidv4(),
+          id: 'pay-001',
           amount: 500,
           payment_method: 'BKASH',
-          transaction_id: 'BKASH123',
+          transaction_id: 'BKASH123456',
           status: 'APPROVED',
           member_id: member1Id,
           submitted_by: member1UserId,
@@ -166,10 +172,10 @@ export async function GET(request: NextRequest) {
           verified_at: new Date().toISOString()
         },
         {
-          id: uuidv4(),
+          id: 'pay-002',
           amount: 1500,
           payment_method: 'NAGAD',
-          transaction_id: 'NAGAD456',
+          transaction_id: 'NAGAD789012',
           status: 'APPROVED',
           member_id: member2Id,
           submitted_by: member2UserId,
@@ -177,7 +183,7 @@ export async function GET(request: NextRequest) {
           verified_at: new Date().toISOString()
         },
         {
-          id: uuidv4(),
+          id: 'pay-003',
           amount: 1000,
           payment_method: 'CASH',
           status: 'PENDING',
@@ -208,7 +214,7 @@ export async function GET(request: NextRequest) {
           password: 'accountant123'
         },
         member: {
-          email: 'member1@fds.com',
+          email: 'john@fds.com',
           password: 'member123'
         }
       }

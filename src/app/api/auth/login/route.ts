@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
 
     // For demo purposes, check accountant with simple password
     if (role === 'ACCOUNTANT') {
-      const isValidPassword = password === 'password123' // Simple demo password for accountant
+      const isValidPassword = password === 'accountant123' // Simple demo password for accountant
       if (!isValidPassword) {
         return NextResponse.json(
           { error: 'Invalid password' },

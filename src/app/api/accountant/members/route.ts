@@ -44,8 +44,18 @@ export async function GET(request: NextRequest) {
       )
     }
 
+    // Ensure numeric values are properly formatted
+    const formattedMembers = members.map(member => ({
+      ...member,
+      monthlyAmount: Number(member.monthly_amount) || 0,
+      totalPaid: Number(member.total_paid) || 0,
+      totalDue: Number(member.total_due) || 0,
+      isActive: Boolean(member.is_active),
+      joinDate: member.join_date
+    }))
+
     return NextResponse.json({
-      members: members || []
+      members: formattedMembers
     })
   } catch (error) {
     console.error('Members fetch error:', error)
@@ -106,7 +116,7 @@ export async function POST(request: NextRequest) {
 
     // Create user account first
     const userId = uuidv4()
-    const { data: user, error: userError } = await supabaseServer
+    const { data: userResult, error: userError } = await supabaseServer
       .from('users')
       .insert({
         id: userId,
@@ -128,6 +138,7 @@ export async function POST(request: NextRequest) {
 
     // Create member
     const memberId = uuidv4()
+    const monthlyAmountNum = parseFloat(monthlyAmount) || 0
     const { data: member, error: createError } = await supabaseServer
       .from('members')
       .insert({
@@ -136,8 +147,9 @@ export async function POST(request: NextRequest) {
         email,
         phone,
         address,
-        monthly_amount: parseFloat(monthlyAmount),
-        total_due: parseFloat(monthlyAmount), // Initial due amount
+        monthly_amount: monthlyAmountNum,
+        total_paid: 0,
+        total_due: monthlyAmountNum, // Initial due amount
         user_id: userId
       })
       .select()
@@ -155,7 +167,14 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       message: 'Member created successfully',
-      member,
+      member: {
+        ...member,
+        monthlyAmount: Number(member.monthly_amount) || 0,
+        totalPaid: Number(member.total_paid) || 0,
+        totalDue: Number(member.total_due) || 0,
+        isActive: Boolean(member.is_active),
+        joinDate: member.join_date
+      },
       tempPassword: password ? undefined : finalPassword, // Only show temp password if auto-generated
       credentials: {
         email,

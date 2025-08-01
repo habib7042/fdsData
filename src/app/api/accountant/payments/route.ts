@@ -45,8 +45,23 @@ export async function GET(request: NextRequest) {
       )
     }
 
+    // Ensure numeric values are properly formatted
+    const formattedPayments = payments.map(payment => ({
+      ...payment,
+      amount: Number(payment.amount) || 0,
+      paymentMethod: payment.payment_method,
+      transactionId: payment.transaction_id,
+      status: payment.status,
+      submittedAt: payment.submitted_at,
+      verifiedAt: payment.verified_at,
+      member: {
+        name: payment.member?.name || '',
+        email: payment.member?.email || ''
+      }
+    }))
+
     return NextResponse.json({
-      payments: payments || []
+      payments: formattedPayments
     })
   } catch (error) {
     console.error('Payments fetch error:', error)

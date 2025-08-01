@@ -1,39 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { supabaseServer } from '@/lib/supabase'
+-- Fund Management System Database Schema
+-- Create tables for FDS with proper structure
 
-export async function GET(request: NextRequest) {
-  try {
-    console.log('Setting up Supabase database...')
-    
-    // Test database connection
-    const { data, error } = await supabaseServer.from('users').select('count', { count: 'exact', head: true })
-    
-    if (error) {
-      console.log('Database connection test failed:', error.message)
-      return NextResponse.json({ 
-        error: 'Database connection failed',
-        details: error.message 
-      }, { status: 500 })
-    }
-    
-    console.log('Database connection successful')
-    
-    try {
-      // Check if tables exist by trying to query them
-      const { error: usersError } = await supabaseServer.from('users').select('*').limit(1)
-      const { error: membersError } = await supabaseServer.from('members').select('*').limit(1)
-      const { error: paymentsError } = await supabaseServer.from('payments').select('*').limit(1)
-      
-      if (!usersError && !membersError && !paymentsError) {
-        console.log('All tables already exist')
-        return NextResponse.json({ 
-          message: 'Database tables already exist. Setup complete.',
-          status: 'success' 
-        })
-      }
-      
-      // If tables don't exist, we need to create them using SQL
-      const setupSQL = `
 -- Drop existing tables if they exist
 DROP TABLE IF EXISTS payments;
 DROP TABLE IF EXISTS members;
@@ -112,34 +79,26 @@ CREATE POLICY "Members can be updated by all" ON members FOR UPDATE USING (true)
 CREATE POLICY "Payments can be viewed by all" ON payments FOR SELECT USING (true);
 CREATE POLICY "Payments can be inserted by all" ON payments FOR INSERT WITH CHECK (true);
 CREATE POLICY "Payments can be updated by all" ON payments FOR UPDATE USING (true);
-      `
-      
-      return NextResponse.json({ 
-        message: 'Database setup requires manual SQL execution',
-        status: 'requires_manual_setup',
-        sql: setupSQL,
-        instructions: [
-          '1. Go to your Supabase dashboard',
-          '2. Open the SQL Editor',
-          '3. Copy and paste the SQL provided in the "sql" field',
-          '4. Run the script to create all tables and enable RLS',
-          '5. After running the SQL, visit /api/seed to insert sample data'
-        ]
-      })
-      
-    } catch (tableError) {
-      console.log('Table setup error:', tableError)
-      return NextResponse.json({ 
-        error: 'Database setup failed',
-        details: tableError.message 
-      }, { status: 500 })
-    }
-    
-  } catch (error) {
-    console.error('Database setup failed:', error)
-    return NextResponse.json({ 
-      error: 'Database setup failed',
-      details: error.message 
-    }, { status: 500 })
-  }
-}
+
+-- Insert sample data
+-- Accountant user
+INSERT INTO users (id, email, name, password, role) VALUES 
+('acc-001', 'accountant@fds.com', 'System Accountant', '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'ACCOUNTANT');
+
+-- Sample members with hashed passwords (password: member123)
+INSERT INTO users (id, email, name, password, role) VALUES 
+('mem-001', 'john@fds.com', 'John Doe', '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'MEMBER'),
+('mem-002', 'jane@fds.com', 'Jane Smith', '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'MEMBER'),
+('mem-003', 'bob@fds.com', 'Bob Johnson', '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'MEMBER');
+
+-- Insert member details
+INSERT INTO members (id, name, email, phone, address, monthly_amount, total_paid, total_due, user_id) VALUES 
+('mem-001', 'John Doe', 'john@fds.com', '+8801712345678', 'Dhaka, Bangladesh', 1000.00, 500.00, 500.00, 'mem-001'),
+('mem-002', 'Jane Smith', 'jane@fds.com', '+8801812345678', 'Chittagong, Bangladesh', 1500.00, 1500.00, 0.00, 'mem-002'),
+('mem-003', 'Bob Johnson', 'bob@fds.com', '+8801912345678', 'Rajshahi, Bangladesh', 2000.00, 1000.00, 1000.00, 'mem-003');
+
+-- Insert sample payments
+INSERT INTO payments (id, amount, payment_method, transaction_id, status, member_id, submitted_by, verified_by, verified_at) VALUES 
+('pay-001', 500.00, 'BKASH', 'BKASH123456', 'APPROVED', 'mem-001', 'mem-001', 'acc-001', CURRENT_TIMESTAMP),
+('pay-002', 1500.00, 'NAGAD', 'NAGAD789012', 'APPROVED', 'mem-002', 'mem-002', 'acc-001', CURRENT_TIMESTAMP),
+('pay-003', 1000.00, 'CASH', NULL, 'PENDING', 'mem-003', 'mem-003', NULL, NULL);
