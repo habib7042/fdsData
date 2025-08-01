@@ -5,6 +5,25 @@ export async function GET(request: NextRequest) {
   try {
     console.log('Seeding database...')
     
+    // Check if accountant already exists
+    const existingAccountant = await db.user.findFirst({
+      where: { email: 'accountant@fds.com' }
+    })
+
+    if (existingAccountant) {
+      return NextResponse.json({ 
+        message: 'Database already seeded',
+        data: {
+          accountant: 'accountant@fds.com / password123',
+          members: [
+            'karim@email.com / password123',
+            'rahim@email.com / password123',
+            'salma@email.com / password123'
+          ]
+        }
+      })
+    }
+
     // Create accountant user
     const accountant = await db.user.create({
       data: {
