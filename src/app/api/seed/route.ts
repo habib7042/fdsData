@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getDb, run, get } from '@/lib/db'
+import { supabaseServer } from '@/lib/supabase'
 import { v4 as uuidv4 } from 'uuid'
 import bcrypt from 'bcryptjs'
 
@@ -7,23 +7,32 @@ export async function GET(request: NextRequest) {
   try {
     console.log('Seeding database with sample data...')
     
-    const db = await getDb()
-    
     // Check if tables exist first
-    try {
-      await db.get("SELECT 1 FROM users LIMIT 1")
-      await db.get("SELECT 1 FROM members LIMIT 1")
-      await db.get("SELECT 1 FROM payments LIMIT 1")
-    } catch (error) {
+    const { error: usersError } = await supabaseServer.from('users').select('*').limit(1)
+    const { error: membersError } = await supabaseServer.from('members').select('*').limit(1)
+    const { error: paymentsError } = await supabaseServer.from('payments').select('*').limit(1)
+    
+    if (usersError || membersError || paymentsError) {
       return NextResponse.json({ 
         error: 'Database tables not found',
-        details: 'Please run /api/setup-db first to create the database tables'
+        details: 'Please run /api/setup-db first to create the database tables',
+        errors: {
+          users: usersError?.message,
+          members: membersError?.message,
+          payments: paymentsError?.message
+        }
       }, { status: 400 })
     }
     
     // Check if data already exists
-    const existingUsers = await get("SELECT * FROM users LIMIT 1")
-    if (existingUsers) {
+    const { data: existingUsers, error: checkError } = await supabaseServer
+      .from('users')
+      .select('*')
+      .limit(1)
+    
+    if (checkError) {
+      console.log('Error checking existing data:', checkError.message)
+    } else if (existingUsers && existingUsers.length > 0) {
       return NextResponse.json({ 
         message: 'Database already contains data. Skipping seeding.',
         status: 'skipped' 
@@ -48,70 +57,157 @@ export async function GET(request: NextRequest) {
     const member3Password = await bcrypt.hash('member123', 10)
     
     // Create users
-    await run(`
-      INSERT INTO users (id, email, name, role, password) 
-      VALUES (?, ?, ?, ?, ?)
-    `, [accountantUserId, 'accountant@fds.com', 'System Accountant', 'ACCOUNTANT', accountantPassword])
+    const { data: users, error: usersCreateError } = await supabaseServer
+      .from('users')
+      .insert([
+        {
+          id: accountantUserId,
+          email: 'accountant@fds.com',
+          name: 'System Accountant',
+          role: 'ACCOUNTANT',
+          password: accountantPassword
+        },
+        {
+          id: member1UserId,
+          email: 'john@fds.com',
+          name: 'John Doe',
+          role: 'MEMBER',
+          password: member1Password
+        },
+        {
+          id: member2UserId,
+          email: 'jane@fds.com',
+          name: 'Jane Smith',
+          role: 'MEMBER',
+          password: member2Password
+        },
+        {
+          id: member3UserId,
+          email: 'bob@fds.com',
+          name: 'Bob Johnson',
+          role: 'MEMBER',
+          password: member3Password
+        }
+      ])
+      .select()
     
-    await run(`
-      INSERT INTO users (id, email, name, role, password) 
-      VALUES (?, ?, ?, ?, ?)
-    `, [member1UserId, 'john@fds.com', 'John Doe', 'MEMBER', member1Password])
-    
-    await run(`
-      INSERT INTO users (id, email, name, role, password) 
-      VALUES (?, ?, ?, ?, ?)
-    `, [member2UserId, 'jane@fds.com', 'Jane Smith', 'MEMBER', member2Password])
-    
-    await run(`
-      INSERT INTO users (id, email, name, role, password) 
-      VALUES (?, ?, ?, ?, ?)
-    `, [member3UserId, 'bob@fds.com', 'Bob Johnson', 'MEMBER', member3Password])
+    if (usersCreateError) {
+      console.error('Error creating users:', usersCreateError)
+      return NextResponse.json({ 
+        error: 'Failed to create users',
+        details: usersCreateError.message 
+      }, { status: 500 })
+    }
     
     // Create members
-    await run(`
-      INSERT INTO members (id, name, email, monthly_amount, total_paid, total_due, user_id) 
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `, [accountantMemberId, 'System Accountant', 'accountant@fds.com', 0, 0, 0, accountantUserId])
+    const { data: members, error: membersCreateError } = await supabaseServer
+      .from('members')
+      .insert([
+        {
+          id: accountantMemberId,
+          name: 'System Accountant',
+          email: 'accountant@fds.com',
+          monthly_amount: 0,
+          total_paid: 0,
+          total_due: 0,
+          user_id: accountantUserId
+        },
+        {
+          id: member1Id,
+          name: 'John Doe',
+          email: 'john@fds.com',
+          phone: '+8801712345678',
+          address: 'Dhaka, Bangladesh',
+          monthly_amount: 1000,
+          total_paid: 500,
+          total_due: 500,
+          user_id: member1UserId
+        },
+        {
+          id: member2Id,
+          name: 'Jane Smith',
+          email: 'jane@fds.com',
+          phone: '+8801812345678',
+          address: 'Chittagong, Bangladesh',
+          monthly_amount: 1500,
+          total_paid: 1500,
+          total_due: 0,
+          user_id: member2UserId
+        },
+        {
+          id: member3Id,
+          name: 'Bob Johnson',
+          email: 'bob@fds.com',
+          phone: '+8801912345678',
+          address: 'Rajshahi, Bangladesh',
+          monthly_amount: 2000,
+          total_paid: 1000,
+          total_due: 1000,
+          user_id: member3UserId
+        }
+      ])
+      .select()
     
-    await run(`
-      INSERT INTO members (id, name, email, phone, address, monthly_amount, total_paid, total_due, user_id) 
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [member1Id, 'John Doe', 'john@fds.com', '+8801712345678', 'Dhaka, Bangladesh', 1000, 500, 500, member1UserId])
-    
-    await run(`
-      INSERT INTO members (id, name, email, phone, address, monthly_amount, total_paid, total_due, user_id) 
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [member2Id, 'Jane Smith', 'jane@fds.com', '+8801812345678', 'Chittagong, Bangladesh', 1500, 1500, 0, member2UserId])
-    
-    await run(`
-      INSERT INTO members (id, name, email, phone, address, monthly_amount, total_paid, total_due, user_id) 
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [member3Id, 'Bob Johnson', 'bob@fds.com', '+8801912345678', 'Rajshahi, Bangladesh', 2000, 1000, 1000, member3UserId])
+    if (membersCreateError) {
+      console.error('Error creating members:', membersCreateError)
+      return NextResponse.json({ 
+        error: 'Failed to create members',
+        details: membersCreateError.message 
+      }, { status: 500 })
+    }
     
     // Create sample payments
-    await run(`
-      INSERT INTO payments (id, amount, payment_method, transaction_id, status, member_id, submitted_by, verified_by, verified_at) 
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, ['pay-001', 500, 'BKASH', 'BKASH123456', 'APPROVED', member1Id, member1UserId, accountantUserId, new Date().toISOString()])
+    const { data: payments, error: paymentsCreateError } = await supabaseServer
+      .from('payments')
+      .insert([
+        {
+          id: 'pay-001',
+          amount: 500,
+          payment_method: 'BKASH',
+          transaction_id: 'BKASH123456',
+          status: 'APPROVED',
+          member_id: member1Id,
+          submitted_by: member1UserId,
+          verified_by: accountantUserId,
+          verified_at: new Date().toISOString()
+        },
+        {
+          id: 'pay-002',
+          amount: 1500,
+          payment_method: 'NAGAD',
+          transaction_id: 'NAGAD789012',
+          status: 'APPROVED',
+          member_id: member2Id,
+          submitted_by: member2UserId,
+          verified_by: accountantUserId,
+          verified_at: new Date().toISOString()
+        },
+        {
+          id: 'pay-003',
+          amount: 1000,
+          payment_method: 'CASH',
+          status: 'PENDING',
+          member_id: member3Id,
+          submitted_by: member3UserId
+        }
+      ])
+      .select()
     
-    await run(`
-      INSERT INTO payments (id, amount, payment_method, transaction_id, status, member_id, submitted_by, verified_by, verified_at) 
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, ['pay-002', 1500, 'NAGAD', 'NAGAD789012', 'APPROVED', member2Id, member2UserId, accountantUserId, new Date().toISOString()])
-    
-    await run(`
-      INSERT INTO payments (id, amount, payment_method, status, member_id, submitted_by) 
-      VALUES (?, ?, ?, ?, ?, ?)
-    `, ['pay-003', 1000, 'CASH', 'PENDING', member3Id, member3UserId])
+    if (paymentsCreateError) {
+      console.error('Error creating payments:', paymentsCreateError)
+      return NextResponse.json({ 
+        error: 'Failed to create payments',
+        details: paymentsCreateError.message 
+      }, { status: 500 })
+    }
     
     console.log('Database seeded successfully')
     
     return NextResponse.json({ 
       message: 'Database seeded successfully',
-      users: 4,
-      members: 4,
-      payments: 3,
+      users: users?.length || 0,
+      members: members?.length || 0,
+      payments: payments?.length || 0,
       credentials: {
         accountant: {
           email: 'accountant@fds.com',

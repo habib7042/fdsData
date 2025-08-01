@@ -1,22 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getDb, get } from '@/lib/db'
+import { supabaseServer } from '@/lib/supabase'
 import bcrypt from 'bcryptjs'
 
 export async function POST(request: NextRequest) {
   try {
     const { email, password, role } = await request.json()
-    
-    const db = await getDb()
 
     // Find user by email and role
-    const user = await get(`
-      SELECT u.*, m.* 
-      FROM users u 
-      LEFT JOIN members m ON u.id = m.user_id 
-      WHERE u.email = ? AND u.role = ?
-    `, [email, role])
+    const { data: user, error } = await supabaseServer
+      .from('users')
+      .select(`
+        *,
+        member:members(*)
+      `)
+      .eq('email', email)
+      .eq('role', role)
+      .single()
 
-    if (!user) {
+    if (error || !user) {
       return NextResponse.json(
         { error: 'User not found' },
         { status: 401 }
@@ -53,20 +54,6 @@ export async function POST(request: NextRequest) {
     // Create a simple token (in production, use JWT)
     const token = Buffer.from(`${user.id}:${Date.now()}`).toString('base64')
 
-    // Format member data
-    const memberData = user.id ? {
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      phone: user.phone,
-      address: user.address,
-      monthlyAmount: Number(user.monthly_amount) || 0,
-      totalPaid: Number(user.total_paid) || 0,
-      totalDue: Number(user.total_due) || 0,
-      isActive: Boolean(user.is_active),
-      joinDate: user.join_date
-    } : null
-
     return NextResponse.json({
       token,
       user: {
@@ -74,7 +61,7 @@ export async function POST(request: NextRequest) {
         email: user.email,
         name: user.name,
         role: user.role,
-        member: memberData
+        member: user.member
       }
     })
   } catch (error) {

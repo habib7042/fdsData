@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getDb, query, get, run } from '@/lib/db'
+import { supabaseServer } from '@/lib/supabase'
 import { v4 as uuidv4 } from 'uuid'
 import bcrypt from 'bcryptjs'
 
@@ -18,20 +18,26 @@ export async function GET(request: NextRequest) {
     const decoded = Buffer.from(token, 'base64').toString()
     const [userId] = decoded.split(':')
 
-    const db = await getDb()
-    const user = await get('SELECT * FROM users WHERE id = ?', [userId])
+    const { data: user, error } = await supabaseServer
+      .from('users')
+      .select('*')
+      .eq('id', userId)
+      .single()
 
-    if (!user || user.role !== 'ACCOUNTANT') {
+    if (error || !user || user.role !== 'ACCOUNTANT') {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
       )
     }
 
-    const members = await query('SELECT * FROM members ORDER BY name ASC')
+    const { data: members, error: membersError } = await supabaseServer
+      .from('members')
+      .select('*')
+      .order('name', { ascending: true })
 
-    if (!members) {
-      console.error('Members fetch error: No members found')
+    if (membersError) {
+      console.error('Members fetch error:', membersError)
       return NextResponse.json(
         { error: 'Failed to fetch members' },
         { status: 500 }
@@ -75,10 +81,13 @@ export async function POST(request: NextRequest) {
     const decoded = Buffer.from(token, 'base64').toString()
     const [userId] = decoded.split(':')
 
-    const db = await getDb()
-    const user = await get('SELECT * FROM users WHERE id = ?', [userId])
+    const { data: user, error } = await supabaseServer
+      .from('users')
+      .select('*')
+      .eq('id', userId)
+      .single()
 
-    if (!user || user.role !== 'ACCOUNTANT') {
+    if (error || !user || user.role !== 'ACCOUNTANT') {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
@@ -88,9 +97,13 @@ export async function POST(request: NextRequest) {
     const { name, email, phone, address, monthlyAmount, password } = await request.json()
 
     // Check if member with this email already exists
-    const existingMember = await get('SELECT * FROM members WHERE email = ?', [email])
+    const { data: existingMember, error: checkError } = await supabaseServer
+      .from('members')
+      .select('*')
+      .eq('email', email)
+      .single()
 
-    if (existingMember) {
+    if (!checkError && existingMember) {
       return NextResponse.json(
         { error: 'Member with this email already exists' },
         { status: 400 }
@@ -103,12 +116,19 @@ export async function POST(request: NextRequest) {
 
     // Create user account first
     const newUserId = uuidv4()
-    try {
-      await run(`
-        INSERT INTO users (id, email, name, role, password) 
-        VALUES (?, ?, ?, ?, ?)
-      `, [newUserId, email, name, 'MEMBER', hashedPassword])
-    } catch (userError) {
+    const { data: userResult, error: userError } = await supabaseServer
+      .from('users')
+      .insert({
+        id: newUserId,
+        email,
+        name,
+        role: 'MEMBER',
+        password: hashedPassword
+      })
+      .select()
+      .single()
+
+    if (userError) {
       console.error('User creation error:', userError)
       return NextResponse.json(
         { error: 'Failed to create user account' },
@@ -119,23 +139,31 @@ export async function POST(request: NextRequest) {
     // Create member
     const memberId = uuidv4()
     const monthlyAmountNum = parseFloat(monthlyAmount) || 0
-    try {
-      await run(`
-        INSERT INTO members (id, name, email, phone, address, monthly_amount, total_paid, total_due, user_id) 
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `, [memberId, name, email, phone, address, monthlyAmountNum, 0, monthlyAmountNum, newUserId])
-    } catch (createError) {
+    const { data: member, error: createError } = await supabaseServer
+      .from('members')
+      .insert({
+        id: memberId,
+        name,
+        email,
+        phone,
+        address,
+        monthly_amount: monthlyAmountNum,
+        total_paid: 0,
+        total_due: monthlyAmountNum, // Initial due amount
+        user_id: newUserId
+      })
+      .select()
+      .single()
+
+    if (createError) {
       // Rollback user creation if member creation fails
-      await run('DELETE FROM users WHERE id = ?', [newUserId])
+      await supabaseServer.from('users').delete().eq('id', newUserId)
       console.error('Member creation error:', createError)
       return NextResponse.json(
         { error: 'Failed to create member' },
         { status: 500 }
       )
     }
-
-    // Get the created member
-    const member = await get('SELECT * FROM members WHERE id = ?', [memberId])
 
     return NextResponse.json({
       message: 'Member created successfully',
