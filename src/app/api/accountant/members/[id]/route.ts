@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { supabaseServer } from '@/lib/supabase'
 
 export async function DELETE(
   request: NextRequest,
@@ -19,11 +19,13 @@ export async function DELETE(
     const decoded = Buffer.from(token, 'base64').toString()
     const [userId] = decoded.split(':')
 
-    const user = await db.user.findUnique({
-      where: { id: userId }
-    })
+    const { data: user, error } = await supabaseServer
+      .from('users')
+      .select('*')
+      .eq('id', userId)
+      .single()
 
-    if (!user || user.role !== 'ACCOUNTANT') {
+    if (error || !user || user.role !== 'ACCOUNTANT') {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
@@ -31,9 +33,18 @@ export async function DELETE(
     }
 
     // Delete member
-    await db.member.delete({
-      where: { id: params.id }
-    })
+    const { error: deleteError } = await supabaseServer
+      .from('members')
+      .delete()
+      .eq('id', params.id)
+
+    if (deleteError) {
+      console.error('Member deletion error:', deleteError)
+      return NextResponse.json(
+        { error: 'Failed to delete member' },
+        { status: 500 }
+      )
+    }
 
     return NextResponse.json({
       message: 'Member deleted successfully'
