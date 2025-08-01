@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseServer } from '@/lib/supabase'
+import bcrypt from 'bcryptjs'
 
 export async function POST(request: NextRequest) {
   try {
@@ -23,15 +24,31 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // For demo purposes, we'll use simple password checking
-    // In production, use proper password hashing
-    const isValidPassword = password === 'password123' // Simple demo password
-    
-    if (!isValidPassword) {
-      return NextResponse.json(
-        { error: 'Invalid password' },
-        { status: 401 }
-      )
+    // For demo purposes, check accountant with simple password
+    if (role === 'ACCOUNTANT') {
+      const isValidPassword = password === 'password123' // Simple demo password for accountant
+      if (!isValidPassword) {
+        return NextResponse.json(
+          { error: 'Invalid password' },
+          { status: 401 }
+        )
+      }
+    } else {
+      // For members, check hashed password
+      if (!user.password) {
+        return NextResponse.json(
+          { error: 'No password set for this user' },
+          { status: 401 }
+        )
+      }
+      
+      const isValidPassword = await bcrypt.compare(password, user.password)
+      if (!isValidPassword) {
+        return NextResponse.json(
+          { error: 'Invalid password' },
+          { status: 401 }
+        )
+      }
     }
 
     // Create a simple token (in production, use JWT)

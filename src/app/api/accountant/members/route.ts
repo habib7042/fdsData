@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseServer } from '@/lib/supabase'
 import { v4 as uuidv4 } from 'uuid'
+import bcrypt from 'bcryptjs'
 
 export async function GET(request: NextRequest) {
   try {
@@ -83,7 +84,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { name, email, phone, address, monthlyAmount } = await request.json()
+    const { name, email, phone, address, monthlyAmount, password } = await request.json()
 
     // Check if member with this email already exists
     const { data: existingMember, error: checkError } = await supabaseServer
@@ -99,6 +100,32 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Generate password if not provided
+    const finalPassword = password || Math.random().toString(36).slice(-8)
+    const hashedPassword = await bcrypt.hash(finalPassword, 10)
+
+    // Create user account first
+    const userId = uuidv4()
+    const { data: user, error: userError } = await supabaseServer
+      .from('users')
+      .insert({
+        id: userId,
+        email,
+        name,
+        role: 'MEMBER',
+        password: hashedPassword
+      })
+      .select()
+      .single()
+
+    if (userError) {
+      console.error('User creation error:', userError)
+      return NextResponse.json(
+        { error: 'Failed to create user account' },
+        { status: 500 }
+      )
+    }
+
     // Create member
     const memberId = uuidv4()
     const { data: member, error: createError } = await supabaseServer
@@ -110,12 +137,15 @@ export async function POST(request: NextRequest) {
         phone,
         address,
         monthly_amount: parseFloat(monthlyAmount),
-        total_due: parseFloat(monthlyAmount) // Initial due amount
+        total_due: parseFloat(monthlyAmount), // Initial due amount
+        user_id: userId
       })
       .select()
       .single()
 
     if (createError) {
+      // Rollback user creation if member creation fails
+      await supabaseServer.from('users').delete().eq('id', userId)
       console.error('Member creation error:', createError)
       return NextResponse.json(
         { error: 'Failed to create member' },
@@ -125,7 +155,12 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       message: 'Member created successfully',
-      member
+      member,
+      tempPassword: password ? undefined : finalPassword, // Only show temp password if auto-generated
+      credentials: {
+        email,
+        password: finalPassword
+      }
     })
   } catch (error) {
     console.error('Member creation error:', error)

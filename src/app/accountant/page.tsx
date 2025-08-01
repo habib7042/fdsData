@@ -48,7 +48,8 @@ export default function AccountantDashboard() {
     email: '',
     phone: '',
     address: '',
-    monthlyAmount: ''
+    monthlyAmount: '',
+    password: ''
   })
 
   useEffect(() => {
@@ -117,10 +118,17 @@ export default function AccountantDashboard() {
       })
 
       if (response.ok) {
+        const data = await response.json()
         setShowAddMemberForm(false)
-        setNewMember({ name: '', email: '', phone: '', address: '', monthlyAmount: '' })
+        setNewMember({ name: '', email: '', phone: '', address: '', monthlyAmount: '', password: '' })
         fetchMembers()
-        alert('Member added successfully!')
+        
+        // Show success message with password if auto-generated
+        let message = 'Member added successfully!'
+        if (data.tempPassword) {
+          message += `\n\nTemporary Password: ${data.tempPassword}\nPlease share this with the member.`
+        }
+        alert(message)
       } else {
         alert('Failed to add member.')
       }
@@ -338,6 +346,18 @@ export default function AccountantDashboard() {
                       onChange={(e) => setNewMember({...newMember, monthlyAmount: e.target.value})}
                       required
                     />
+                  </div>
+                  
+                  <div>
+                    <Label htmlFor="password">পাসওয়ার্ড</Label>
+                    <Input
+                      id="password"
+                      type="password"
+                      value={newMember.password}
+                      onChange={(e) => setNewMember({...newMember, password: e.target.value})}
+                      placeholder="খালি থাকলে স্বয়ংক্রিয়ভাবে তৈরি হবে"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">খালি থাকলে স্বয়ংক্রিয়ভাবে পাসওয়ার্ড তৈরি হবে</p>
                   </div>
                   
                   <div className="flex space-x-2">

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseServer } from '@/lib/supabase'
 import { v4 as uuidv4 } from 'uuid'
+import bcrypt from 'bcryptjs'
 
 export async function GET(request: NextRequest) {
   try {
@@ -49,6 +50,12 @@ export async function GET(request: NextRequest) {
     const member2Id = uuidv4()
     const member3Id = uuidv4()
     
+    // Hash passwords
+    const accountantPassword = await bcrypt.hash('accountant123', 10)
+    const member1Password = await bcrypt.hash('member123', 10)
+    const member2Password = await bcrypt.hash('member123', 10)
+    const member3Password = await bcrypt.hash('member123', 10)
+    
     // Create users
     const { data: users, error: usersCreateError } = await supabaseServer
       .from('users')
@@ -57,25 +64,29 @@ export async function GET(request: NextRequest) {
           id: accountantUserId,
           email: 'accountant@fds.com',
           name: 'Accountant User',
-          role: 'ACCOUNTANT'
+          role: 'ACCOUNTANT',
+          password: accountantPassword
         },
         {
           id: member1UserId,
           email: 'member1@fds.com',
           name: 'Member 1',
-          role: 'MEMBER'
+          role: 'MEMBER',
+          password: member1Password
         },
         {
           id: member2UserId,
           email: 'member2@fds.com',
           name: 'Member 2',
-          role: 'MEMBER'
+          role: 'MEMBER',
+          password: member2Password
         },
         {
           id: member3UserId,
           email: 'member3@fds.com',
           name: 'Member 3',
-          role: 'MEMBER'
+          role: 'MEMBER',
+          password: member3Password
         }
       ])
       .select()

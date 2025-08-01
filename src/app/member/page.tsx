@@ -37,11 +37,17 @@ export default function MemberDashboard() {
   const [payments, setPayments] = useState<Payment[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [showPaymentForm, setShowPaymentForm] = useState(false)
+  const [showPasswordForm, setShowPasswordForm] = useState(false)
   const [paymentData, setPaymentData] = useState({
     amount: '',
     paymentMethod: '',
     transactionId: '',
     notes: ''
+  })
+  const [passwordData, setPasswordData] = useState({
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: ''
   })
 
   useEffect(() => {
@@ -120,6 +126,46 @@ export default function MemberDashboard() {
       }
     } catch (error) {
       alert('An error occurred while submitting payment.')
+    }
+  }
+
+  const handlePasswordChange = async (e: React.FormEvent) => {
+    e.preventDefault()
+    
+    if (passwordData.newPassword !== passwordData.confirmPassword) {
+      alert('New passwords do not match!')
+      return
+    }
+    
+    if (passwordData.newPassword.length < 6) {
+      alert('Password must be at least 6 characters long!')
+      return
+    }
+    
+    try {
+      const token = localStorage.getItem('fds-token')
+      const response = await fetch('/api/member/change-password', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          currentPassword: passwordData.currentPassword,
+          newPassword: passwordData.newPassword
+        })
+      })
+
+      if (response.ok) {
+        setShowPasswordForm(false)
+        setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' })
+        alert('Password changed successfully!')
+      } else {
+        const errorData = await response.json()
+        alert(errorData.error || 'Failed to change password.')
+      }
+    } catch (error) {
+      alert('An error occurred while changing password.')
     }
   }
 
@@ -212,6 +258,7 @@ export default function MemberDashboard() {
             <TabsList>
               <TabsTrigger value="payments">পেমেন্ট ইতিহাস</TabsTrigger>
               <TabsTrigger value="profile">প্রোফাইল</TabsTrigger>
+              <TabsTrigger value="password">পাসওয়ার্ড পরিবর্তন</TabsTrigger>
             </TabsList>
             
             <Button onClick={() => setShowPaymentForm(true)}>
@@ -282,6 +329,24 @@ export default function MemberDashboard() {
                     <p className="text-lg">
                       {member?.joinDate ? new Date(member.joinDate).toLocaleDateString('bn-BD') : 'N/A'}
                     </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="password" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>পাসওয়ার্ড পরিবর্তন</CardTitle>
+                <CardDescription>আপনার পাসওয়ার্ড পরিবর্তন করুন</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="text-center">
+                    <Button onClick={() => setShowPasswordForm(true)}>
+                      পাসওয়ার্ড পরিবর্তন করুন
+                    </Button>
                   </div>
                 </div>
               </CardContent>
@@ -359,6 +424,71 @@ export default function MemberDashboard() {
                     type="button" 
                     variant="outline" 
                     onClick={() => setShowPaymentForm(false)}
+                    className="flex-1"
+                  >
+                    বাতিল
+                  </Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Password Change Modal */}
+      {showPasswordForm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <Card className="w-full max-w-md">
+            <CardHeader>
+              <CardTitle>পাসওয়ার্ড পরিবর্তন করুন</CardTitle>
+              <CardDescription>আপনার নতুন পাসওয়ার্ড সেট করুন</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handlePasswordChange} className="space-y-4">
+                <div>
+                  <Label htmlFor="currentPassword">বর্তমান পাসওয়ার্ড</Label>
+                  <Input
+                    id="currentPassword"
+                    type="password"
+                    value={passwordData.currentPassword}
+                    onChange={(e) => setPasswordData({...passwordData, currentPassword: e.target.value})}
+                    placeholder="বর্তমান পাসওয়ার্ড"
+                    required
+                  />
+                </div>
+                
+                <div>
+                  <Label htmlFor="newPassword">নতুন পাসওয়ার্ড</Label>
+                  <Input
+                    id="newPassword"
+                    type="password"
+                    value={passwordData.newPassword}
+                    onChange={(e) => setPasswordData({...passwordData, newPassword: e.target.value})}
+                    placeholder="নতুন পাসওয়ার্ড"
+                    required
+                  />
+                </div>
+                
+                <div>
+                  <Label htmlFor="confirmPassword">নতুন পাসওয়ার্ড নিশ্চিত করুন</Label>
+                  <Input
+                    id="confirmPassword"
+                    type="password"
+                    value={passwordData.confirmPassword}
+                    onChange={(e) => setPasswordData({...passwordData, confirmPassword: e.target.value})}
+                    placeholder="নতুন পাসওয়ার্ড আবার লিখুন"
+                    required
+                  />
+                </div>
+                
+                <div className="flex space-x-2">
+                  <Button type="submit" className="flex-1">
+                    পরিবর্তন করুন
+                  </Button>
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    onClick={() => setShowPasswordForm(false)}
                     className="flex-1"
                   >
                     বাতিল
