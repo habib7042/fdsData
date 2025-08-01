@@ -11,68 +11,68 @@ export async function GET(request: NextRequest) {
     
     // Use Prisma to push the schema and create tables
     try {
-      // This will create all tables based on the schema
+      // Drop existing tables if they exist to recreate with correct schema
+      await db.$executeRaw`DROP TABLE IF EXISTS payments CASCADE`
+      await db.$executeRaw`DROP TABLE IF EXISTS members CASCADE`
+      await db.$executeRaw`DROP TABLE IF EXISTS users CASCADE`
+      
+      // Create users table with correct column names matching Prisma schema
       await db.$executeRaw`
-        CREATE TABLE IF NOT EXISTS users (
+        CREATE TABLE users (
           id TEXT PRIMARY KEY,
           email TEXT NOT NULL UNIQUE,
           name TEXT,
           role TEXT NOT NULL DEFAULT 'MEMBER',
-          created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-          updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+          createdAt TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+          updatedAt TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
         )
       `
       
+      // Create members table with correct column names
       await db.$executeRaw`
-        CREATE TABLE IF NOT EXISTS members (
+        CREATE TABLE members (
           id TEXT PRIMARY KEY,
           name TEXT NOT NULL,
           email TEXT NOT NULL UNIQUE,
           phone TEXT,
           address TEXT,
-          monthly_amount REAL NOT NULL DEFAULT 0,
-          total_paid REAL NOT NULL DEFAULT 0,
-          total_due REAL NOT NULL DEFAULT 0,
-          is_active BOOLEAN NOT NULL DEFAULT true,
-          join_date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-          user_id TEXT UNIQUE,
-          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+          monthlyAmount REAL NOT NULL DEFAULT 0,
+          totalPaid REAL NOT NULL DEFAULT 0,
+          totalDue REAL NOT NULL DEFAULT 0,
+          isActive BOOLEAN NOT NULL DEFAULT true,
+          joinDate TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+          userId TEXT UNIQUE,
+          FOREIGN KEY (userId) REFERENCES users(id) ON DELETE SET NULL
         )
       `
       
+      // Create payments table with correct column names
       await db.$executeRaw`
-        CREATE TABLE IF NOT EXISTS payments (
+        CREATE TABLE payments (
           id TEXT PRIMARY KEY,
           amount REAL NOT NULL,
-          payment_method TEXT NOT NULL,
-          transaction_id TEXT,
+          paymentMethod TEXT NOT NULL,
+          transactionId TEXT,
           notes TEXT,
           status TEXT NOT NULL DEFAULT 'PENDING',
-          submitted_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-          verified_at TIMESTAMP WITH TIME ZONE,
-          verified_by TEXT,
-          member_id TEXT NOT NULL,
-          submitted_by TEXT NOT NULL,
-          FOREIGN KEY (member_id) REFERENCES members(id) ON DELETE CASCADE,
-          FOREIGN KEY (submitted_by) REFERENCES users(id) ON DELETE CASCADE
+          submittedAt TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+          verifiedAt TIMESTAMP WITH TIME ZONE,
+          verifiedBy TEXT,
+          memberId TEXT NOT NULL,
+          submittedBy TEXT NOT NULL,
+          FOREIGN KEY (memberId) REFERENCES members(id) ON DELETE CASCADE,
+          FOREIGN KEY (submittedBy) REFERENCES users(id) ON DELETE CASCADE
         )
       `
       
-      console.log('Database tables created successfully')
+      console.log('Database tables created successfully with correct schema')
       
       return NextResponse.json({ 
-        message: 'Database setup completed successfully. Tables created.',
+        message: 'Database setup completed successfully. Tables created with correct schema.',
         status: 'success' 
       })
     } catch (tableError) {
       console.log('Table creation error:', tableError)
-      // If tables already exist, that's okay
-      if (tableError.message?.includes('already exists') || tableError.code === '42P07') {
-        return NextResponse.json({ 
-          message: 'Database tables already exist',
-          status: 'success' 
-        })
-      }
       throw tableError
     }
     
