@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client'
+import { withAccelerate } from '@prisma/accelerate'
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined
@@ -6,8 +7,10 @@ const globalForPrisma = globalThis as unknown as {
 
 export const db =
   globalForPrisma.prisma ??
-  new PrismaClient({
-    log: ['query'],
-  })
+  withAccelerate(
+    new PrismaClient({
+      log: ['query'],
+    })
+  )
 
 if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = db
