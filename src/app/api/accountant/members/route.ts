@@ -115,11 +115,11 @@ export async function POST(request: NextRequest) {
     const hashedPassword = await bcrypt.hash(finalPassword, 10)
 
     // Create user account first
-    const userId = uuidv4()
+    const newUserId = uuidv4()
     const { data: userResult, error: userError } = await supabaseServer
       .from('users')
       .insert({
-        id: userId,
+        id: newUserId,
         email,
         name,
         role: 'MEMBER',
@@ -150,14 +150,14 @@ export async function POST(request: NextRequest) {
         monthly_amount: monthlyAmountNum,
         total_paid: 0,
         total_due: monthlyAmountNum, // Initial due amount
-        user_id: userId
+        user_id: newUserId
       })
       .select()
       .single()
 
     if (createError) {
       // Rollback user creation if member creation fails
-      await supabaseServer.from('users').delete().eq('id', userId)
+      await supabaseServer.from('users').delete().eq('id', newUserId)
       console.error('Member creation error:', createError)
       return NextResponse.json(
         { error: 'Failed to create member' },
