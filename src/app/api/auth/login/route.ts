@@ -1,23 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
-import bcrypt from 'bcryptjs'
+import { supabaseServer } from '@/lib/supabase'
 
 export async function POST(request: NextRequest) {
   try {
     const { email, password, role } = await request.json()
 
     // Find user by email and role
-    const user = await db.user.findFirst({
-      where: {
-        email,
-        role
-      },
-      include: {
-        member: true
-      }
-    })
+    const { data: user, error } = await supabaseServer
+      .from('users')
+      .select(`
+        *,
+        member:members(*)
+      `)
+      .eq('email', email)
+      .eq('role', role)
+      .single()
 
-    if (!user) {
+    if (error || !user) {
       return NextResponse.json(
         { error: 'User not found' },
         { status: 401 }

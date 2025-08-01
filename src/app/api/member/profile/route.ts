@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { supabaseServer } from '@/lib/supabase'
 
 export async function GET(request: NextRequest) {
   try {
@@ -16,14 +16,16 @@ export async function GET(request: NextRequest) {
     const decoded = Buffer.from(token, 'base64').toString()
     const [userId] = decoded.split(':')
 
-    const user = await db.user.findUnique({
-      where: { id: userId },
-      include: {
-        member: true
-      }
-    })
+    const { data: user, error } = await supabaseServer
+      .from('users')
+      .select(`
+        *,
+        member:members(*)
+      `)
+      .eq('id', userId)
+      .single()
 
-    if (!user || user.role !== 'MEMBER') {
+    if (error || !user || user.role !== 'MEMBER') {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }

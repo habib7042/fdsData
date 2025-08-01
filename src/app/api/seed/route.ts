@@ -1,160 +1,208 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { supabaseServer } from '@/lib/supabase'
+import { v4 as uuidv4 } from 'uuid'
 
 export async function GET(request: NextRequest) {
   try {
-    console.log('Seeding database...')
+    console.log('Seeding database with sample data...')
     
-    // Check if accountant already exists
-    const existingAccountant = await db.user.findFirst({
-      where: { email: 'accountant@fds.com' }
-    })
-
-    if (existingAccountant) {
+    // Check if tables exist first
+    const { error: usersError } = await supabaseServer.from('users').select('*').limit(1)
+    const { error: membersError } = await supabaseServer.from('members').select('*').limit(1)
+    const { error: paymentsError } = await supabaseServer.from('payments').select('*').limit(1)
+    
+    if (usersError || membersError || paymentsError) {
       return NextResponse.json({ 
-        message: 'Database already seeded',
-        data: {
-          accountant: 'accountant@fds.com / password123',
-          members: [
-            'karim@email.com / password123',
-            'rahim@email.com / password123',
-            'salma@email.com / password123'
-          ]
+        error: 'Database tables not found',
+        details: 'Please run /api/setup-db first to create the database tables',
+        errors: {
+          users: usersError?.message,
+          members: membersError?.message,
+          payments: paymentsError?.message
         }
+      }, { status: 400 })
+    }
+    
+    // Check if data already exists
+    const { data: existingUsers, error: checkError } = await supabaseServer
+      .from('users')
+      .select('*')
+      .limit(1)
+    
+    if (checkError) {
+      console.log('Error checking existing data:', checkError.message)
+    } else if (existingUsers && existingUsers.length > 0) {
+      return NextResponse.json({ 
+        message: 'Database already contains data. Skipping seeding.',
+        status: 'skipped' 
       })
     }
-
-    // Create accountant user
-    const accountant = await db.user.create({
-      data: {
-        id: 'accountant-' + Date.now(),
-        email: 'accountant@fds.com',
-        name: 'Accountant',
-        role: 'ACCOUNTANT'
-      }
-    })
-
-    // Create some sample members
-    const member1 = await db.member.create({
-      data: {
-        id: 'member1-' + Date.now(),
-        name: 'আব্দুল করিম',
-        email: 'karim@email.com',
-        phone: '01712345678',
-        address: 'ঢাকা, বাংলাদেশ',
-        monthlyAmount: 1000,
-        totalDue: 1000
-      }
-    })
-
-    const member2 = await db.member.create({
-      data: {
-        id: 'member2-' + Date.now(),
-        name: 'রহিম উদ্দিন',
-        email: 'rahim@email.com',
-        phone: '01812345678',
-        address: 'চট্টগ্রাম, বাংলাদেশ',
-        monthlyAmount: 1500,
-        totalDue: 1500
-      }
-    })
-
-    const member3 = await db.member.create({
-      data: {
-        id: 'member3-' + Date.now(),
-        name: 'সালমা খাতুন',
-        email: 'salma@email.com',
-        phone: '01912345678',
-        address: 'রাজশাহী, বাংলাদেশ',
-        monthlyAmount: 1200,
-        totalDue: 1200
-      }
-    })
-
-    // Create users for members
-    await db.user.create({
-      data: {
-        id: 'user1-' + Date.now(),
-        email: 'karim@email.com',
-        name: 'আব্দুল করিম',
-        role: 'MEMBER',
-        member: {
-          connect: { id: member1.id }
+    
+    // Generate UUIDs for the records
+    const accountantUserId = uuidv4()
+    const member1UserId = uuidv4()
+    const member2UserId = uuidv4()
+    const member3UserId = uuidv4()
+    
+    const accountantMemberId = uuidv4()
+    const member1Id = uuidv4()
+    const member2Id = uuidv4()
+    const member3Id = uuidv4()
+    
+    // Create users
+    const { data: users, error: usersCreateError } = await supabaseServer
+      .from('users')
+      .insert([
+        {
+          id: accountantUserId,
+          email: 'accountant@fds.com',
+          name: 'Accountant User',
+          role: 'ACCOUNTANT'
+        },
+        {
+          id: member1UserId,
+          email: 'member1@fds.com',
+          name: 'Member 1',
+          role: 'MEMBER'
+        },
+        {
+          id: member2UserId,
+          email: 'member2@fds.com',
+          name: 'Member 2',
+          role: 'MEMBER'
+        },
+        {
+          id: member3UserId,
+          email: 'member3@fds.com',
+          name: 'Member 3',
+          role: 'MEMBER'
         }
-      }
-    })
-
-    await db.user.create({
-      data: {
-        id: 'user2-' + Date.now(),
-        email: 'rahim@email.com',
-        name: 'রহিম উদ্দিন',
-        role: 'MEMBER',
-        member: {
-          connect: { id: member2.id }
-        }
-      }
-    })
-
-    await db.user.create({
-      data: {
-        id: 'user3-' + Date.now(),
-        email: 'salma@email.com',
-        name: 'সালমা খাতুন',
-        role: 'MEMBER',
-        member: {
-          connect: { id: member3.id }
-        }
-      }
-    })
-
-    // Create some sample payments
-    const user1 = await db.user.findFirst({ where: { email: 'karim@email.com' } })
-    const user2 = await db.user.findFirst({ where: { email: 'rahim@email.com' } })
-
-    if (user1) {
-      await db.payment.create({
-        data: {
-          id: 'payment1-' + Date.now(),
-          amount: 1000,
-          paymentMethod: 'BKASH',
-          transactionId: 'TXN123456',
-          notes: 'January payment',
-          memberId: member1.id,
-          submittedBy: user1.id,
-          status: 'PENDING'
-        }
-      })
+      ])
+      .select()
+    
+    if (usersCreateError) {
+      console.error('Error creating users:', usersCreateError)
+      return NextResponse.json({ 
+        error: 'Failed to create users',
+        details: usersCreateError.message 
+      }, { status: 500 })
     }
-
-    if (user2) {
-      await db.payment.create({
-        data: {
-          id: 'payment2-' + Date.now(),
+    
+    // Create members
+    const { data: members, error: membersCreateError } = await supabaseServer
+      .from('members')
+      .insert([
+        {
+          id: accountantMemberId,
+          name: 'Accountant',
+          email: 'accountant@fds.com',
+          monthly_amount: 0,
+          total_paid: 0,
+          total_due: 0,
+          user_id: accountantUserId
+        },
+        {
+          id: member1Id,
+          name: 'Member One',
+          email: 'member1@fds.com',
+          monthly_amount: 1000,
+          total_paid: 500,
+          total_due: 500,
+          user_id: member1UserId
+        },
+        {
+          id: member2Id,
+          name: 'Member Two',
+          email: 'member2@fds.com',
+          monthly_amount: 1500,
+          total_paid: 1500,
+          total_due: 0,
+          user_id: member2UserId
+        },
+        {
+          id: member3Id,
+          name: 'Member Three',
+          email: 'member3@fds.com',
+          monthly_amount: 2000,
+          total_paid: 1000,
+          total_due: 1000,
+          user_id: member3UserId
+        }
+      ])
+      .select()
+    
+    if (membersCreateError) {
+      console.error('Error creating members:', membersCreateError)
+      return NextResponse.json({ 
+        error: 'Failed to create members',
+        details: membersCreateError.message 
+      }, { status: 500 })
+    }
+    
+    // Create sample payments
+    const { data: payments, error: paymentsCreateError } = await supabaseServer
+      .from('payments')
+      .insert([
+        {
+          id: uuidv4(),
+          amount: 500,
+          payment_method: 'BKASH',
+          transaction_id: 'BKASH123',
+          status: 'APPROVED',
+          member_id: member1Id,
+          submitted_by: member1UserId,
+          verified_by: accountantUserId,
+          verified_at: new Date().toISOString()
+        },
+        {
+          id: uuidv4(),
           amount: 1500,
-          paymentMethod: 'NAGAD',
-          transactionId: 'TXN789012',
-          notes: 'January payment',
-          memberId: member2.id,
-          submittedBy: user2.id,
-          status: 'PENDING'
+          payment_method: 'NAGAD',
+          transaction_id: 'NAGAD456',
+          status: 'APPROVED',
+          member_id: member2Id,
+          submitted_by: member2UserId,
+          verified_by: accountantUserId,
+          verified_at: new Date().toISOString()
+        },
+        {
+          id: uuidv4(),
+          amount: 1000,
+          payment_method: 'CASH',
+          status: 'PENDING',
+          member_id: member3Id,
+          submitted_by: member3UserId
         }
-      })
+      ])
+      .select()
+    
+    if (paymentsCreateError) {
+      console.error('Error creating payments:', paymentsCreateError)
+      return NextResponse.json({ 
+        error: 'Failed to create payments',
+        details: paymentsCreateError.message 
+      }, { status: 500 })
     }
-
-    console.log('Sample data created successfully!')
+    
+    console.log('Database seeded successfully')
     
     return NextResponse.json({ 
       message: 'Database seeded successfully',
-      data: {
-        accountant: 'accountant@fds.com / password123',
-        members: [
-          'karim@email.com / password123',
-          'rahim@email.com / password123',
-          'salma@email.com / password123'
-        ]
+      users: users?.length || 0,
+      members: members?.length || 0,
+      payments: payments?.length || 0,
+      credentials: {
+        accountant: {
+          email: 'accountant@fds.com',
+          password: 'accountant123'
+        },
+        member: {
+          email: 'member1@fds.com',
+          password: 'member123'
+        }
       }
     })
+    
   } catch (error) {
     console.error('Seeding failed:', error)
     return NextResponse.json({ 

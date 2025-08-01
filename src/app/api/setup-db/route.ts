@@ -1,113 +1,125 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { PrismaClient } from '@prisma/client'
+import { supabaseServer } from '@/lib/supabase'
 
 export async function GET(request: NextRequest) {
   try {
-    console.log('Setting up database...')
-    
-    // Create a new Prisma client instance for this operation
-    const prisma = new PrismaClient({
-      log: ['query'],
-    })
+    console.log('Setting up Supabase database...')
     
     // Test database connection
-    await prisma.$executeRaw`SELECT 1`
+    const { data, error } = await supabaseServer.from('users').select('count', { count: 'exact', head: true })
+    
+    if (error) {
+      console.log('Database connection test failed:', error.message)
+      return NextResponse.json({ 
+        error: 'Database connection failed',
+        details: error.message 
+      }, { status: 500 })
+    }
+    
     console.log('Database connection successful')
     
     try {
-      // Instead of creating tables with raw SQL, let's use Prisma's built-in approach
-      // We'll try to use the Prisma schema to create tables through the client
+      // Create tables using Supabase SQL RPC or direct SQL
+      // First, let's check if tables exist by trying to query them
+      const { error: usersError } = await supabaseServer.from('users').select('*').limit(1)
+      const { error: membersError } = await supabaseServer.from('members').select('*').limit(1)
+      const { error: paymentsError } = await supabaseServer.from('payments').select('*').limit(1)
       
-      // First, let's check if we can access the schema through Prisma
-      try {
-        // Try to create a user - this will fail if tables don't exist but gives us more info
-        await prisma.user.create({
-          data: {
-            id: 'test-user-id',
-            email: 'test@example.com',
-            role: 'MEMBER'
-          }
+      if (!usersError && !membersError && !paymentsError) {
+        console.log('All tables already exist')
+        return NextResponse.json({ 
+          message: 'Database tables already exist. Setup complete.',
+          status: 'success' 
         })
-        console.log('User table exists and is accessible')
-      } catch (createError) {
-        console.log('User table does not exist or cannot be accessed:', createError.message)
-        
-        // Since we can't create tables directly, let's try a different approach
-        // We'll use Prisma's queryRaw to check if we can create tables with a different method
-        try {
-          // Try to create the tables using a simpler approach
-          await prisma.$executeRaw`
-            CREATE TABLE IF NOT EXISTS users (
-              id TEXT PRIMARY KEY,
-              email TEXT NOT NULL UNIQUE,
-              name TEXT,
-              role TEXT NOT NULL DEFAULT 'MEMBER',
-              createdAt TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-              updatedAt TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-            )
-          `
-          console.log('Users table created successfully')
-          
-          await prisma.$executeRaw`
-            CREATE TABLE IF NOT EXISTS members (
-              id TEXT PRIMARY KEY,
-              name TEXT NOT NULL,
-              email TEXT NOT NULL UNIQUE,
-              phone TEXT,
-              address TEXT,
-              monthlyAmount REAL NOT NULL DEFAULT 0,
-              totalPaid REAL NOT NULL DEFAULT 0,
-              totalDue REAL NOT NULL DEFAULT 0,
-              isActive BOOLEAN NOT NULL DEFAULT true,
-              joinDate TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-              userId TEXT UNIQUE,
-              FOREIGN KEY (userId) REFERENCES users(id) ON DELETE SET NULL
-            )
-          `
-          console.log('Members table created successfully')
-          
-          await prisma.$executeRaw`
-            CREATE TABLE IF NOT EXISTS payments (
-              id TEXT PRIMARY KEY,
-              amount REAL NOT NULL,
-              paymentMethod TEXT NOT NULL,
-              transactionId TEXT,
-              notes TEXT,
-              status TEXT NOT NULL DEFAULT 'PENDING',
-              submittedAt TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-              verifiedAt TIMESTAMP WITH TIME ZONE,
-              verifiedBy TEXT,
-              memberId TEXT NOT NULL,
-              submittedBy TEXT NOT NULL,
-              FOREIGN KEY (memberId) REFERENCES members(id) ON DELETE CASCADE,
-              FOREIGN KEY (submittedBy) REFERENCES users(id) ON DELETE CASCADE
-            )
-          `
-          console.log('Payments table created successfully')
-          
-        } catch (tableError) {
-          console.log('Table creation failed:', tableError.message)
-          
-          // If we still can't create tables, we need to inform the user
-          return NextResponse.json({ 
-            message: 'Database connected but table creation failed due to permissions',
-            error: 'PERMISSION_DENIED',
-            details: 'The database user does not have permission to create tables. Please check your database configuration or contact your database provider.',
-            suggestion: 'You may need to create the tables manually using a database admin tool or update the database user permissions.'
-          }, { status: 403 })
-        }
       }
       
-      await prisma.$disconnect()
+      // If tables don't exist, we need to create them using SQL
+      // Since we can't create tables directly via Supabase client without proper permissions,
+      // we'll provide the SQL for manual execution
+      const setupSQL = `
+-- Create users table
+CREATE TABLE IF NOT EXISTS users (
+  id TEXT PRIMARY KEY,
+  email TEXT NOT NULL UNIQUE,
+  name TEXT,
+  role TEXT NOT NULL DEFAULT 'MEMBER',
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create members table
+CREATE TABLE IF NOT EXISTS members (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  email TEXT NOT NULL UNIQUE,
+  phone TEXT,
+  address TEXT,
+  monthly_amount REAL NOT NULL DEFAULT 0,
+  total_paid REAL NOT NULL DEFAULT 0,
+  total_due REAL NOT NULL DEFAULT 0,
+  is_active BOOLEAN NOT NULL DEFAULT true,
+  join_date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+  user_id TEXT UNIQUE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+-- Create payments table
+CREATE TABLE IF NOT EXISTS payments (
+  id TEXT PRIMARY KEY,
+  amount REAL NOT NULL,
+  payment_method TEXT NOT NULL,
+  transaction_id TEXT,
+  notes TEXT,
+  status TEXT NOT NULL DEFAULT 'PENDING',
+  submitted_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+  verified_at TIMESTAMP WITH TIME ZONE,
+  verified_by TEXT,
+  member_id TEXT NOT NULL,
+  submitted_by TEXT NOT NULL,
+  FOREIGN KEY (member_id) REFERENCES members(id) ON DELETE CASCADE,
+  FOREIGN KEY (submitted_by) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- Enable RLS (Row Level Security)
+ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE members ENABLE ROW LEVEL SECURITY;
+ALTER TABLE payments ENABLE ROW LEVEL SECURITY;
+
+-- Create policies for users table
+CREATE POLICY "Users can view own data" ON users FOR SELECT USING (true);
+CREATE POLICY "Users can insert own data" ON users FOR INSERT WITH CHECK (true);
+CREATE POLICY "Users can update own data" ON users FOR UPDATE USING (true);
+
+-- Create policies for members table
+CREATE POLICY "Members can be viewed by all" ON members FOR SELECT USING (true);
+CREATE POLICY "Members can be inserted by all" ON members FOR INSERT WITH CHECK (true);
+CREATE POLICY "Members can be updated by all" ON members FOR UPDATE USING (true);
+
+-- Create policies for payments table
+CREATE POLICY "Payments can be viewed by all" ON payments FOR SELECT USING (true);
+CREATE POLICY "Payments can be inserted by all" ON payments FOR INSERT WITH CHECK (true);
+CREATE POLICY "Payments can be updated by all" ON payments FOR UPDATE USING (true);
+      `
       
       return NextResponse.json({ 
-        message: 'Database setup completed successfully. Tables created.',
-        status: 'success' 
+        message: 'Database setup requires manual SQL execution',
+        status: 'requires_manual_setup',
+        sql: setupSQL,
+        instructions: [
+          '1. Go to your Supabase dashboard',
+          '2. Open the SQL Editor',
+          '3. Copy and paste the SQL provided in the "sql" field',
+          '4. Run the script to create all tables and enable RLS',
+          '5. After running the SQL, visit /api/seed to insert sample data'
+        ]
       })
+      
     } catch (tableError) {
-      console.log('Table creation error:', tableError)
-      await prisma.$disconnect()
-      throw tableError
+      console.log('Table setup error:', tableError)
+      return NextResponse.json({ 
+        error: 'Database setup failed',
+        details: tableError.message 
+      }, { status: 500 })
     }
     
   } catch (error) {

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { supabaseServer } from '@/lib/supabase'
+import { v4 as uuidv4 } from 'uuid'
 
 export async function GET(request: NextRequest) {
   try {
@@ -16,23 +17,34 @@ export async function GET(request: NextRequest) {
     const decoded = Buffer.from(token, 'base64').toString()
     const [userId] = decoded.split(':')
 
-    const user = await db.user.findUnique({
-      where: { id: userId }
-    })
+    const { data: user, error } = await supabaseServer
+      .from('users')
+      .select('*')
+      .eq('id', userId)
+      .single()
 
-    if (!user || user.role !== 'ACCOUNTANT') {
+    if (error || !user || user.role !== 'ACCOUNTANT') {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
       )
     }
 
-    const members = await db.member.findMany({
-      orderBy: { name: 'asc' }
-    })
+    const { data: members, error: membersError } = await supabaseServer
+      .from('members')
+      .select('*')
+      .order('name', { ascending: true })
+
+    if (membersError) {
+      console.error('Members fetch error:', membersError)
+      return NextResponse.json(
+        { error: 'Failed to fetch members' },
+        { status: 500 }
+      )
+    }
 
     return NextResponse.json({
-      members
+      members: members || []
     })
   } catch (error) {
     console.error('Members fetch error:', error)
@@ -58,11 +70,13 @@ export async function POST(request: NextRequest) {
     const decoded = Buffer.from(token, 'base64').toString()
     const [userId] = decoded.split(':')
 
-    const user = await db.user.findUnique({
-      where: { id: userId }
-    })
+    const { data: user, error } = await supabaseServer
+      .from('users')
+      .select('*')
+      .eq('id', userId)
+      .single()
 
-    if (!user || user.role !== 'ACCOUNTANT') {
+    if (error || !user || user.role !== 'ACCOUNTANT') {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
@@ -72,11 +86,13 @@ export async function POST(request: NextRequest) {
     const { name, email, phone, address, monthlyAmount } = await request.json()
 
     // Check if member with this email already exists
-    const existingMember = await db.member.findUnique({
-      where: { email }
-    })
+    const { data: existingMember, error: checkError } = await supabaseServer
+      .from('members')
+      .select('*')
+      .eq('email', email)
+      .single()
 
-    if (existingMember) {
+    if (!checkError && existingMember) {
       return NextResponse.json(
         { error: 'Member with this email already exists' },
         { status: 400 }
@@ -84,16 +100,28 @@ export async function POST(request: NextRequest) {
     }
 
     // Create member
-    const member = await db.member.create({
-      data: {
+    const memberId = uuidv4()
+    const { data: member, error: createError } = await supabaseServer
+      .from('members')
+      .insert({
+        id: memberId,
         name,
         email,
         phone,
         address,
-        monthlyAmount: parseFloat(monthlyAmount),
-        totalDue: parseFloat(monthlyAmount) // Initial due amount
-      }
-    })
+        monthly_amount: parseFloat(monthlyAmount),
+        total_due: parseFloat(monthlyAmount) // Initial due amount
+      })
+      .select()
+      .single()
+
+    if (createError) {
+      console.error('Member creation error:', createError)
+      return NextResponse.json(
+        { error: 'Failed to create member' },
+        { status: 500 }
+      )
+    }
 
     return NextResponse.json({
       message: 'Member created successfully',

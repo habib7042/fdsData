@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { supabaseServer } from '@/lib/supabase'
+import { v4 as uuidv4 } from 'uuid'
 
 export async function GET(request: NextRequest) {
   try {
@@ -16,27 +17,38 @@ export async function GET(request: NextRequest) {
     const decoded = Buffer.from(token, 'base64').toString()
     const [userId] = decoded.split(':')
 
-    const user = await db.user.findUnique({
-      where: { id: userId },
-      include: {
-        member: true
-      }
-    })
+    const { data: user, error } = await supabaseServer
+      .from('users')
+      .select(`
+        *,
+        member:members(*)
+      `)
+      .eq('id', userId)
+      .single()
 
-    if (!user || user.role !== 'MEMBER' || !user.member) {
+    if (error || !user || user.role !== 'MEMBER' || !user.member) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
       )
     }
 
-    const payments = await db.payment.findMany({
-      where: { memberId: user.member.id },
-      orderBy: { submittedAt: 'desc' }
-    })
+    const { data: payments, error: paymentsError } = await supabaseServer
+      .from('payments')
+      .select('*')
+      .eq('member_id', user.member.id)
+      .order('submitted_at', { ascending: false })
+
+    if (paymentsError) {
+      console.error('Payments fetch error:', paymentsError)
+      return NextResponse.json(
+        { error: 'Failed to fetch payments' },
+        { status: 500 }
+      )
+    }
 
     return NextResponse.json({
-      payments
+      payments: payments || []
     })
   } catch (error) {
     console.error('Payments fetch error:', error)
@@ -62,14 +74,16 @@ export async function POST(request: NextRequest) {
     const decoded = Buffer.from(token, 'base64').toString()
     const [userId] = decoded.split(':')
 
-    const user = await db.user.findUnique({
-      where: { id: userId },
-      include: {
-        member: true
-      }
-    })
+    const { data: user, error } = await supabaseServer
+      .from('users')
+      .select(`
+        *,
+        member:members(*)
+      `)
+      .eq('id', userId)
+      .single()
 
-    if (!user || user.role !== 'MEMBER' || !user.member) {
+    if (error || !user || user.role !== 'MEMBER' || !user.member) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
@@ -78,17 +92,28 @@ export async function POST(request: NextRequest) {
 
     const { amount, paymentMethod, transactionId, notes } = await request.json()
 
-    const payment = await db.payment.create({
-      data: {
+    const { data: payment, error: paymentError } = await supabaseServer
+      .from('payments')
+      .insert({
+        id: uuidv4(),
         amount: parseFloat(amount),
-        paymentMethod,
-        transactionId,
+        payment_method: paymentMethod,
+        transaction_id: transactionId,
         notes,
-        memberId: user.member.id,
-        submittedBy: userId,
+        member_id: user.member.id,
+        submitted_by: userId,
         status: 'PENDING'
-      }
-    })
+      })
+      .select()
+      .single()
+
+    if (paymentError) {
+      console.error('Payment submission error:', paymentError)
+      return NextResponse.json(
+        { error: 'Failed to submit payment' },
+        { status: 500 }
+      )
+    }
 
     return NextResponse.json({
       message: 'Payment submitted successfully',

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { supabaseServer } from '@/lib/supabase'
 
 export async function GET(request: NextRequest) {
   try {
@@ -16,31 +16,37 @@ export async function GET(request: NextRequest) {
     const decoded = Buffer.from(token, 'base64').toString()
     const [userId] = decoded.split(':')
 
-    const user = await db.user.findUnique({
-      where: { id: userId }
-    })
+    const { data: user, error } = await supabaseServer
+      .from('users')
+      .select('*')
+      .eq('id', userId)
+      .single()
 
-    if (!user || user.role !== 'ACCOUNTANT') {
+    if (error || !user || user.role !== 'ACCOUNTANT') {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
       )
     }
 
-    const payments = await db.payment.findMany({
-      include: {
-        member: {
-          select: {
-            name: true,
-            email: true
-          }
-        }
-      },
-      orderBy: { submittedAt: 'desc' }
-    })
+    const { data: payments, error: paymentsError } = await supabaseServer
+      .from('payments')
+      .select(`
+        *,
+        member:members(name, email)
+      `)
+      .order('submitted_at', { ascending: false })
+
+    if (paymentsError) {
+      console.error('Payments fetch error:', paymentsError)
+      return NextResponse.json(
+        { error: 'Failed to fetch payments' },
+        { status: 500 }
+      )
+    }
 
     return NextResponse.json({
-      payments
+      payments: payments || []
     })
   } catch (error) {
     console.error('Payments fetch error:', error)

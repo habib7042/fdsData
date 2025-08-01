@@ -1,55 +1,82 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { PrismaClient } from '@prisma/client'
+import { supabase, supabaseServer } from '@/lib/supabase'
 
 export async function GET(request: NextRequest) {
   try {
-    // Just return environment info for debugging
-    const dbUrl = process.env.DATABASE_URL || 'Not set'
+    // Get environment info for debugging
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'Not set'
+    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'Not set'
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'Not set'
     
-    // Mask the password for security
-    const maskedUrl = dbUrl.replace(/:[^:@]+@/, ':***@')
+    // Mask the keys for security
+    const maskedAnonKey = supabaseAnonKey ? supabaseAnonKey.substring(0, 10) + '...' : 'Not set'
+    const maskedServiceKey = supabaseServiceKey ? supabaseServiceKey.substring(0, 10) + '...' : 'Not set'
     
     const result = {
-      message: 'Database configuration check',
-      database_url: maskedUrl,
+      message: 'Supabase configuration check',
+      supabase_url: supabaseUrl,
+      supabase_anon_key: maskedAnonKey,
+      supabase_service_key: maskedServiceKey,
       node_env: process.env.NODE_ENV,
       vercel: process.env.VERCEL ? 'Yes' : 'No',
       connection_test: null,
-      permissions_test: null,
-      tables_exist: null
+      tables_exist: null,
+      rls_test: null
     }
     
     // Test database connection
     try {
-      const prisma = new PrismaClient()
-      await prisma.$executeRaw`SELECT 1`
-      result.connection_test = 'Success'
+      const { data, error } = await supabase.from('users').select('count', { count: 'exact', head: true })
       
-      // Test table creation permissions
-      try {
-        await prisma.$executeRaw`CREATE TABLE IF NOT EXISTS test_table (id TEXT PRIMARY KEY)`
-        await prisma.$executeRaw`DROP TABLE IF EXISTS test_table`
-        result.permissions_test = 'Can create tables'
-      } catch (permError) {
-        result.permissions_test = `Permission error: ${permError.message}`
+      if (error) {
+        result.connection_test = `Failed: ${error.message}`
+      } else {
+        result.connection_test = 'Success'
       }
       
       // Check if our tables exist
       try {
-        const userTable = await prisma.$queryRaw`SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'users')`
-        const memberTable = await prisma.$queryRaw`SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'members')`
-        const paymentTable = await prisma.$queryRaw`SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'payments')`
+        const { data: usersData, error: usersError } = await supabase
+          .from('users')
+          .select('*')
+          .limit(1)
+        
+        const { data: membersData, error: membersError } = await supabase
+          .from('members')
+          .select('*')
+          .limit(1)
+        
+        const { data: paymentsData, error: paymentsError } = await supabase
+          .from('payments')
+          .select('*')
+          .limit(1)
         
         result.tables_exist = {
-          users: userTable[0].exists,
-          members: memberTable[0].exists,
-          payments: paymentTable[0].exists
+          users: !usersError,
+          members: !membersError,
+          payments: !paymentsError,
+          errors: {
+            users: usersError?.message,
+            members: membersError?.message,
+            payments: paymentsError?.message
+          }
         }
       } catch (tableError) {
         result.tables_exist = `Error checking tables: ${tableError.message}`
       }
       
-      await prisma.$disconnect()
+      // Test RLS (Row Level Security) permissions
+      try {
+        const { data: testData, error: testError } = await supabaseServer
+          .from('users')
+          .select('*')
+          .limit(1)
+        
+        result.rls_test = testError ? `RLS Error: ${testError.message}` : 'RLS working correctly'
+      } catch (rlsError) {
+        result.rls_test = `RLS Test Error: ${rlsError.message}`
+      }
+      
     } catch (connError) {
       result.connection_test = `Failed: ${connError.message}`
     }
