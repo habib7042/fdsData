@@ -1,24 +1,34 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { PrismaClient } from '@prisma/client'
 
 export async function GET(request: NextRequest) {
   try {
     console.log('Setting up database...')
     
+    // Create a new Prisma client instance for this operation
+    const prisma = new PrismaClient({
+      log: ['query'],
+    })
+    
     // Test database connection
-    await db.$executeRaw`SELECT 1`
+    await prisma.$executeRaw`SELECT 1`
     console.log('Database connection successful')
     
-    // Use Prisma to push the schema and create tables
+    // Use Prisma to push the schema - this is the recommended approach
     try {
-      // Drop existing tables if they exist to recreate with correct schema
-      await db.$executeRaw`DROP TABLE IF EXISTS payments CASCADE`
-      await db.$executeRaw`DROP TABLE IF EXISTS members CASCADE`
-      await db.$executeRaw`DROP TABLE IF EXISTS users CASCADE`
+      // Try to create tables using Prisma's schema pushing
+      // First, let's check if tables already exist
+      try {
+        await prisma.user.findFirst()
+        console.log('Users table already exists')
+      } catch (error) {
+        console.log('Users table does not exist, will be created by Prisma')
+      }
       
-      // Create users table with correct column names matching Prisma schema
-      await db.$executeRaw`
-        CREATE TABLE users (
+      // For Supabase, we need to use Prisma's built-in migrations
+      // Let's try to create the schema using Prisma's executeRaw with proper permissions
+      await prisma.$executeRaw`
+        CREATE TABLE IF NOT EXISTS users (
           id TEXT PRIMARY KEY,
           email TEXT NOT NULL UNIQUE,
           name TEXT,
@@ -28,9 +38,8 @@ export async function GET(request: NextRequest) {
         )
       `
       
-      // Create members table with correct column names
-      await db.$executeRaw`
-        CREATE TABLE members (
+      await prisma.$executeRaw`
+        CREATE TABLE IF NOT EXISTS members (
           id TEXT PRIMARY KEY,
           name TEXT NOT NULL,
           email TEXT NOT NULL UNIQUE,
@@ -46,9 +55,8 @@ export async function GET(request: NextRequest) {
         )
       `
       
-      // Create payments table with correct column names
-      await db.$executeRaw`
-        CREATE TABLE payments (
+      await prisma.$executeRaw`
+        CREATE TABLE IF NOT EXISTS payments (
           id TEXT PRIMARY KEY,
           amount REAL NOT NULL,
           paymentMethod TEXT NOT NULL,
@@ -65,14 +73,17 @@ export async function GET(request: NextRequest) {
         )
       `
       
-      console.log('Database tables created successfully with correct schema')
+      console.log('Database tables created successfully')
+      
+      await prisma.$disconnect()
       
       return NextResponse.json({ 
-        message: 'Database setup completed successfully. Tables created with correct schema.',
+        message: 'Database setup completed successfully. Tables created.',
         status: 'success' 
       })
     } catch (tableError) {
       console.log('Table creation error:', tableError)
+      await prisma.$disconnect()
       throw tableError
     }
     
